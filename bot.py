@@ -1,33 +1,47 @@
 import os
 import logging
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from deriv_api import DerivAPI  # Make sure this matches your actual deriv API import
+from telegram.ext import Updater, CommandHandler
 
 # ===== LOGGING =====
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.INFO  # INFO is usually enough for production
 )
 logger = logging.getLogger(__name__)
 
 # ===== ENVIRONMENT VARIABLES =====
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-DERIV_API_TOKEN = os.environ.get("DERIV_API")
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+DERIV_API_TOKEN = os.environ.get("DERIV_API_TOKEN")
 
 if not BOT_TOKEN or not DERIV_API_TOKEN:
-    logger.error("BOT_TOKEN or DERIV_API not set!")
+    logger.error("Environment variables TELEGRAM_BOT_TOKEN or DERIV_API_TOKEN not set!")
     exit(1)
 
 # ===== DERIV API SETUP =====
-deriv = DerivAPI(DERIV_API_TOKEN)  # Replace with actual connection if needed
+class MockDerivAPI:
+    """Temporary mock class until you implement real API calls"""
+    def predict_next_digit(self):
+        # Replace this with actual prediction logic
+        import random
+        return random.randint(0, 9)
+
+    def execute_trade(self, stake=10, contract="DIGITDIFF 4"):
+        # Replace this with actual trade execution logic
+        return f"Mock trade executed: {contract} with stake {stake}"
+
+try:
+    deriv = MockDerivAPI()  # Replace MockDerivAPI with real API class later
+    logger.info("Connected to Deriv API successfully.")
+except Exception as e:
+    logger.error(f"Failed to connect to Deriv API: {e}")
+    deriv = None
 
 # ===== TELEGRAM COMMANDS =====
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hello! Deriv bot is online. 🤖")
+def start(update, context):
+    update.message.reply_text("Hello! Deriv bot is online. 🤖")
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+def help_command(update, context):
+    update.message.reply_text(
         "Available commands:\n"
         "/start - Start bot\n"
         "/help - Show help\n"
@@ -35,26 +49,45 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/trade - Execute a trade"
     )
 
-async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    next_digit = deriv.predict_next_digit()  # Example placeholder
-    await update.message.reply_text(f"Predicted next digit: {next_digit}")
+def predict(update, context):
+    try:
+        if deriv:
+            next_digit = deriv.predict_next_digit()
+        else:
+            next_digit = "N/A"
+        update.message.reply_text(f"Predicted next digit: {next_digit}")
+    except Exception as e:
+        logger.error(f"/predict failed: {e}")
+        update.message.reply_text("Prediction failed. Check logs.")
 
-async def trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    result = deriv.execute_trade(stake=10, contract="DIGITDIFF 4")  # Example placeholder
-    await update.message.reply_text(f"Trade executed: {result}")
+def trade(update, context):
+    try:
+        if deriv:
+            result = deriv.execute_trade(stake=10, contract="DIGITDIFF 4")
+        else:
+            result = "N/A"
+        update.message.reply_text(f"Trade executed: {result}")
+    except Exception as e:
+        logger.error(f"/trade failed: {e}")
+        update.message.reply_text("Trade failed. Check logs.")
 
 # ===== MAIN FUNCTION =====
-async def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+def main():
+    try:
+        updater = Updater(token=BOT_TOKEN, use_context=True)
+        dispatcher = updater.dispatcher
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("predict", predict))
-    app.add_handler(CommandHandler("trade", trade))
+        # Register command handlers
+        dispatcher.add_handler(CommandHandler("start", start))
+        dispatcher.add_handler(CommandHandler("help", help_command))
+        dispatcher.add_handler(CommandHandler("predict", predict))
+        dispatcher.add_handler(CommandHandler("trade", trade))
 
-    logger.info("Bot started. Listening for commands...")
-    await app.run_polling()
+        updater.start_polling()
+        logger.info("Bot started. Listening for commands...")
+        updater.idle()
+    except Exception as e:
+        logger.error(f"Failed to start bot: {e}")
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    main()
