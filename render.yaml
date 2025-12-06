@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: deriv-telegram-bot
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn bot:app --preload"
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
